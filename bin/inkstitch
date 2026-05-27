@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/hao/anaconda3/envs/inkstitch/bin/python "$(dirname "$(readlink -f "$0")")/../inkstitch.py" "$@"

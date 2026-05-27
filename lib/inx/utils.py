@@ -35,7 +35,8 @@ def build_environment():
             env.globals["icon_path"] = '../bin/icons/'
     else:
         # user is running inkstitch.py directly as a developer
-        env.globals["command_tag"] = '<command location="inx" interpreter="python">../inkstitch.py</command>'
+        python = os.environ.get('INKSTITCH_PYTHON', 'python')
+        env.globals["command_tag"] = f'<command location="inx" interpreter="{python}">../inkstitch.py</command>'
         env.globals["icon_path"] = '../icons/'
     return env
 

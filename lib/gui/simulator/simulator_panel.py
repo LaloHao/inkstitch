@@ -11,6 +11,10 @@ from ...i18n import _
 from ...stitch_plan import StitchPlan
 from ...utils.settings import global_settings
 from . import ControlPanel, DrawingPanel, ViewPanel
+try:
+    from .gl_drawing_panel import GLDrawingPanel, OPENGL_AVAILABLE
+except ImportError:
+    OPENGL_AVAILABLE = False
 
 # L10N command label at bottom of simulator window
 COMMAND_NAMES = [_("STITCH"), _("JUMP"), _("TRIM"), _("STOP"), _("COLOR CHANGE")]
@@ -66,7 +70,13 @@ class SimulatorPanel(wx.Panel):
             detach_callback,
             stitch_plan=stitch_plan,
         )
-        self.dp = DrawingPanel(self)
+        if OPENGL_AVAILABLE:
+            try:
+                self.dp = GLDrawingPanel(self)
+            except Exception:
+                self.dp = DrawingPanel(self)
+        else:
+            self.dp = DrawingPanel(self)
         self.vp.set_drawing_panel(self.dp)
         self.vp.set_background_color(wx.Colour(background_color))
         self.dp.set_background_color(wx.Colour(background_color))

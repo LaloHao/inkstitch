@@ -565,13 +565,18 @@ class SettingsPanel(wx.Panel):
 
         super().__init__(self.parent, wx.ID_ANY)
 
+        self.tabs = []
         self.preview_renderer = PreviewRenderer(self.render_stitch_plan, self.on_stitch_plan_rendered)
 
         self.notebook = wx.Notebook(self, wx.ID_ANY)
-        self.tabs = self.tabs_factory(self.notebook)
 
-        for tab in self.tabs:
-            tab.on_change(self.update_preview)
+        # Loading placeholder shown while tabs are created in _finish_loading
+        self._loading_page = wx.Panel(self.notebook)
+        loading_text = wx.StaticText(self._loading_page, label=_("Loading parameters…"))
+        loading_sizer = wx.BoxSizer(wx.VERTICAL)
+        loading_sizer.Add(loading_text, 0, wx.ALL | wx.ALIGN_CENTER_HORIZONTAL, 20)
+        self._loading_page.SetSizer(loading_sizer)
+        self.notebook.AddPage(self._loading_page, _("Loading…"))
 
         self.presets_panel = PresetsPanel(self)
         self.warning_panel = WarningPanel(self)
@@ -584,49 +589,69 @@ class SettingsPanel(wx.Panel):
         self.use_last_button = wx.Button(
             self, wx.ID_ANY, _("Use Last Settings"))
         self.use_last_button.Bind(wx.EVT_BUTTON, self.use_last)
+        self.use_last_button.Disable()
 
         self.apply_button = wx.Button(self, wx.ID_ANY, _("Apply and Quit"))
         self.apply_button.Bind(wx.EVT_BUTTON, self.apply)
+        self.apply_button.Disable()
 
         self.__do_layout()
+        wx.CallLater(1, self._finish_loading)
+
+    def _finish_loading(self):
+        self.tabs = self.tabs_factory(self.notebook)
+
+        self.notebook.DeletePage(0)  # remove loading placeholder
+
+        for tab in self.tabs:
+            tab.on_change(self.update_preview)
+            self.notebook.AddPage(tab, tab.name)
+
+        self.apply_button.Enable()
+        self.use_last_button.Enable()
+        self.Layout()
+
+        top = self.GetTopLevelParent()
+        if hasattr(top, 'set_sash_position'):
+            top.set_sash_position()
+
         self.update_preview()
 
     def update_preview(self, tab=None):
-        self.simulator.stop()
-        self.simulator.clear()
+        self._hide_warning()
         self.preview_renderer.update()
 
     def render_stitch_plan(self):
+        elements = nodes_to_elements(self.nodes)
+        if not elements:
+            return None
 
         stitch_groups = []
-        elements = nodes_to_elements(self.nodes)
-        elements.append(None)
-        try:
-            wx.CallAfter(self._hide_warning)
-            last_stitch_group = None
-            for element, next_element in zip(elements[:-1], elements[1:]):
-                # Making a copy of the embroidery element is an easy
-                # way to drop the cache in the @cache decorators used
-                # for many params in embroider.py.
+        last_stitch_group = None
 
-                stitch_groups.extend(copy(element).embroider(last_stitch_group, next_element))
-                if stitch_groups:
-                    last_stitch_group = stitch_groups[-1]
+        for i, element in enumerate(elements):
+            next_element = elements[i + 1] if i + 1 < len(elements) else None
+            check_stop_flag()
+            try:
+                new_groups = copy(element).embroider(last_stitch_group, next_element)
+                stitch_groups.extend(new_groups)
+                if new_groups:
+                    last_stitch_group = new_groups[-1]
+            except ExitThread:
+                raise
+            except InkstitchException as exc:
+                wx.CallAfter(self._show_warning, str(exc))
+            except Exception:
+                wx.CallAfter(self._show_warning, format_uncaught_exception())
 
-                check_stop_flag()
+        if not stitch_groups:
+            return None
 
-            if stitch_groups:
-                return stitch_groups_to_stitch_plan(
-                    stitch_groups,
-                    collapse_len=self.metadata['collapse_len_mm'],
-                    min_stitch_len=self.metadata['min_stitch_len_mm']
-                )
-        except (SystemExit, ExitThread):
-            raise
-        except InkstitchException as exc:
-            wx.CallAfter(self._show_warning, str(exc))
-        except Exception:
-            wx.CallAfter(self._show_warning, format_uncaught_exception())
+        return stitch_groups_to_stitch_plan(
+            stitch_groups,
+            collapse_len=self.metadata['collapse_len_mm'],
+            min_stitch_len=self.metadata['min_stitch_len_mm'],
+        )
 
     def get_stroke_last_tabs(self):
         tabs = self.tabs
@@ -638,8 +663,8 @@ class SettingsPanel(wx.Panel):
     def on_stitch_plan_rendered(self, stitch_plan):
         try:
             self.simulator.stop()
+            self.simulator.current_stitch = 0
             self.simulator.load(stitch_plan)
-            self.simulator.go()
         except RuntimeError:
             # this can happen when they close the window at a bad time
             pass
@@ -680,7 +705,7 @@ class SettingsPanel(wx.Panel):
         for tab in self.tabs:
             tab.load_preset(preset_data)
 
-        self.preview_renderer.update()
+        self.update_preview()
 
     def _apply(self):
         for tab in self.tabs:
@@ -709,8 +734,7 @@ class SettingsPanel(wx.Panel):
         sizer_1 = wx.BoxSizer(wx.VERTICAL)
         # self.sizer_3_staticbox.Lower()
         sizer_3 = wx.BoxSizer(wx.HORIZONTAL)
-        for tab in self.tabs:
-            self.notebook.AddPage(tab, tab.name)
+        # Note: tabs are added to the notebook in _finish_loading, not here
         sizer_1.Add(self.warning_panel, 0, flag=wx.EXPAND | wx.ALL, border=10)
         sizer_1.Add(self.notebook, 1, wx.EXPAND |
                     wx.LEFT | wx.TOP | wx.RIGHT, 10)
