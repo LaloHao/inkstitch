@@ -650,9 +650,12 @@ class EmbroideryElement(object):
                     stitch_group.color = "black"
             stitch_plan_cache[cache_key] = stitch_groups
 
-        if previous_stitch is not None:
+        if previous_stitch is not None and next_element is None:
             # Also store it with None as the previous stitch, so that it can be used next time
-            # if we don't care about the previous stitch
+            # if we don't care about the previous stitch.
+            # Only do this when next_element is also None: a result generated with a specific
+            # next_element has different stitches (e.g. end_at_nearest_point routing) and must
+            # not be returned for a query where next_element is None.
             cache_key = self.get_cache_key(None, None)
             if cache_key not in stitch_plan_cache:
                 stitch_plan_cache[cache_key] = stitch_groups

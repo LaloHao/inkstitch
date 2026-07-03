@@ -629,20 +629,25 @@ class SettingsPanel(wx.Panel):
         stitch_groups = []
         last_stitch_group = None
 
-        for i, element in enumerate(elements):
-            next_element = elements[i + 1] if i + 1 < len(elements) else None
-            check_stop_flag()
-            try:
+        try:
+            for i, element in enumerate(elements):
+                next_element = elements[i + 1] if i + 1 < len(elements) else None
+                check_stop_flag()
+                # Making a copy of the embroidery element is an easy
+                # way to drop the cache in the @cache decorators used
+                # for many params in embroider.py.
                 new_groups = copy(element).embroider(last_stitch_group, next_element)
                 stitch_groups.extend(new_groups)
                 if new_groups:
                     last_stitch_group = new_groups[-1]
-            except ExitThread:
-                raise
-            except InkstitchException as exc:
-                wx.CallAfter(self._show_warning, str(exc))
-            except Exception:
-                wx.CallAfter(self._show_warning, format_uncaught_exception())
+        except (SystemExit, ExitThread):
+            raise
+        except InkstitchException as exc:
+            wx.CallAfter(self._show_warning, str(exc))
+            return None
+        except Exception:
+            wx.CallAfter(self._show_warning, format_uncaught_exception())
+            return None
 
         if not stitch_groups:
             return None

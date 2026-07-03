@@ -12,7 +12,7 @@ from typing import Iterator
 import networkx
 from shapely import geometry as shgeo
 from shapely import make_valid, segmentize, set_precision
-from shapely.ops import snap, unary_union
+from shapely.ops import snap
 from shapely.strtree import STRtree
 
 from ..debug.debug import debug
@@ -138,11 +138,8 @@ def adjust_shape_for_pull_compensation(shape, angle, row_spacing, pull_compensat
     segments = [segment for row in rows for segment in row]
     segments = apply_pull_compensation(segments, pull_compensation_px, pull_compensation_percent)
 
-    lines = [shgeo.LineString((start, end)) for start, end in segments]
     buffer_amount = row_spacing/2 + 0.01
-    buffered_lines = [line.buffer(buffer_amount) for line in lines]
-
-    polygon = ensure_polygon(unary_union(buffered_lines))
+    polygon = ensure_polygon(shgeo.MultiLineString(segments).buffer(buffer_amount))
     exterior = smooth_path(polygon.exterior.coords, 0.2)
     min_hole_area = row_spacing ** 2
     interiors = [smooth_path(interior.coords) for interior in polygon.interiors if shgeo.Polygon(interior).area > min_hole_area]
