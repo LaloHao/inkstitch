@@ -19,7 +19,7 @@ DEFAULT_SETTINGS = {
     # simulator
     "simulator_adaptive_speed": True,
     "simulator_speed": 16,
-    "simulator_line_width": 0.1,
+    "simulator_line_width": 0.4,
     "simulator_npp_size": 0.5,
     "simulator_crosshair_radius": 10,
     "simulator_crosshair_thickness": 1,

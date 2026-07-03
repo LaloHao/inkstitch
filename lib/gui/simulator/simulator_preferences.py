@@ -36,7 +36,7 @@ class SimulatorPreferenceDialog(wx.Dialog):
         self.adaptive_speed.SetValue(self.adaptive_speed_value)
         self.adaptive_speed.Bind(wx.EVT_CHECKBOX, self.on_adaptive_speed_changed)
         line_width_label = wx.StaticText(self, label=_("Line width (mm)"))
-        self.line_width = wx.SpinCtrlDouble(self, min=0.03, max=2, initial=0.1, inc=0.01, style=wx.SP_WRAP | wx.SP_ARROW_KEYS)
+        self.line_width = wx.SpinCtrlDouble(self, min=0.03, max=2, initial=0.4, inc=0.01, style=wx.SP_WRAP | wx.SP_ARROW_KEYS)
         self.line_width.SetDigits(2)
         self.line_width.SetValue(self.line_width_value)
         self.line_width.Bind(wx.EVT_SPINCTRLDOUBLE, lambda event: self.on_change("simulator_line_width", event))

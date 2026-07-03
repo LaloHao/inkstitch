@@ -155,6 +155,8 @@ if OPENGL_AVAILABLE:
             self._draw_page()
 
             # 2. Stitches + NPP (world space)
+            line_width_px = global_settings['simulator_line_width'] * PIXELS_PER_MM * self.zoom
+            GL.glLineWidth(max(1.0, line_width_px))
             last_pos = None
             stitch_offset = 0
             for (vao, vbo, color_rgba, num_verts, jumps), positions in zip(self._vbos, self._positions):
@@ -180,6 +182,7 @@ if OPENGL_AVAILABLE:
                 stitch_offset = block_end
 
             GL.glBindVertexArray(0)
+            GL.glLineWidth(1.0)
 
             # 3. Screen-space overlays: crosshair and scale bar
             # u_projection stays as world_proj (= screen ortho); only transform changes to identity
