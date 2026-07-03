@@ -129,6 +129,8 @@ class DrawingPanel(wx.Panel):
                     last_stitch = stitches[-1]
                 break
 
+        self.draw_trim_markers(canvas)
+
         if last_stitch and global_settings['display_crosshair']:
             self.draw_crosshair(last_stitch[0], last_stitch[1], canvas, transform)
 
@@ -211,6 +213,16 @@ class DrawingPanel(wx.Panel):
             canvas.SetPen(npp_pen)
             canvas.StrokeLineSegments(stitches, [(stitch[0] + 0.001, stitch[1]) for stitch in stitches])
 
+    def draw_trim_markers(self, canvas: wx.GraphicsContext) -> None:
+        if not global_settings['trim_button_status'] or not self.trim_positions:
+            return
+        size = max(2.0, global_settings['simulator_npp_size'] * PIXELS_PER_MM * self.PIXEL_DENSITY * 1.5)
+        trim_pen = wx.Pen(wx.Colour(220, 50, 50), width=max(1, int(size * 0.25)))
+        canvas.SetPen(trim_pen)
+        for x, y in self.trim_positions:
+            canvas.StrokeLines(((x - size, y - size), (x + size, y + size)))
+            canvas.StrokeLines(((x + size, y - size), (x - size, y + size)))
+
     def load(self, stitch_plan: StitchPlan) -> None:
         self.direction = 1
         self.minx, self.miny, self.maxx, self.maxy = stitch_plan.bounding_box
@@ -277,6 +289,7 @@ class DrawingPanel(wx.Panel):
         self.pens = []
         self.stitch_blocks = []
         self.jumps = []
+        self.trim_positions: List[Tuple[float, float]] = []
 
         for color_block in stitch_plan:
             pen = self.color_to_pen(color_block.color)
@@ -287,13 +300,16 @@ class DrawingPanel(wx.Panel):
             for stitch in color_block:
                 # trim any whitespace on the left and top and scale to the
                 # pixel density
-                stitch_block.append((self.PIXEL_DENSITY * (stitch.x - self.minx),
-                                     self.PIXEL_DENSITY * (stitch.y - self.miny)))
+                pos = (self.PIXEL_DENSITY * (stitch.x - self.minx),
+                       self.PIXEL_DENSITY * (stitch.y - self.miny))
+                stitch_block.append(pos)
 
                 if stitch.jump:
                     jumps.append(stitch_index)
 
                 if stitch.trim or stitch.stop or stitch.color_change:
+                    if stitch.trim:
+                        self.trim_positions.append(pos)
                     self.pens.append(pen)
                     self.stitch_blocks.append(stitch_block)
                     stitch_block = []

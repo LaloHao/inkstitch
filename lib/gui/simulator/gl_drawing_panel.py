@@ -96,6 +96,7 @@ if OPENGL_AVAILABLE:
             self.zoom = 1.0
             self._vbos: List[Tuple] = []
             self._positions: List[np.ndarray] = []  # CPU copy of positions for crosshair
+            self._trim_world_positions: List[Tuple[float, float]] = []
 
             self.Bind(wx.EVT_PAINT, self.on_paint)
             self.Bind(wx.EVT_SIZE, self.on_resize)
@@ -184,9 +185,12 @@ if OPENGL_AVAILABLE:
             GL.glBindVertexArray(0)
             GL.glLineWidth(1.0)
 
-            # 3. Screen-space overlays: crosshair and scale bar
+            # 3. Screen-space overlays: trim markers, crosshair and scale bar
             # u_projection stays as world_proj (= screen ortho); only transform changes to identity
             GL.glUniformMatrix4fv(self.u_transform, 1, GL.GL_TRUE, identity)
+
+            if global_settings['trim_button_status'] and self._trim_world_positions:
+                self._draw_trim_markers()
 
             if last_pos is not None and global_settings['display_crosshair']:
                 self._draw_crosshair(last_pos)
@@ -387,6 +391,16 @@ if OPENGL_AVAILABLE:
             s = self.zoom / self.PIXEL_DENSITY
             return s * wx_coord + self.pan[0], s * wy_coord + self.pan[1]
 
+        def _draw_trim_markers(self) -> None:
+            size = max(4.0, global_settings['simulator_npp_size'] * PIXELS_PER_MM * self.zoom * 1.5)
+            GL.glLineWidth(max(1.0, size * 0.15))
+            color = (0.86, 0.2, 0.2, 1.0)
+            for wpos_x, wpos_y in self._trim_world_positions:
+                sx, sy = self._world_to_screen(wpos_x, wpos_y)
+                self._draw_overlay([(sx - size, sy - size), (sx + size, sy + size)], GL.GL_LINES, color)
+                self._draw_overlay([(sx + size, sy - size), (sx - size, sy + size)], GL.GL_LINES, color)
+            GL.glLineWidth(1.0)
+
         def _draw_crosshair(self, last_pos: np.ndarray) -> None:
             sx, sy = self._world_to_screen(float(last_pos[0]), float(last_pos[1]))
             r = float(global_settings['simulator_crosshair_radius'])
@@ -456,6 +470,7 @@ if OPENGL_AVAILABLE:
 
         def _parse_stitch_plan(self, stitch_plan: StitchPlan) -> List[Tuple]:
             blocks = []
+            self._trim_world_positions: List[Tuple[float, float]] = []
             for color_block in stitch_plan:
                 color_rgba = self._color_to_rgba(color_block.color)
                 verts: List[List[float]] = []
@@ -463,14 +478,15 @@ if OPENGL_AVAILABLE:
                 stitch_index = 0
 
                 for stitch in color_block:
-                    verts.append([
-                        self.PIXEL_DENSITY * (stitch.x - self.minx),
-                        self.PIXEL_DENSITY * (stitch.y - self.miny),
-                    ])
+                    wpos_x = self.PIXEL_DENSITY * (stitch.x - self.minx)
+                    wpos_y = self.PIXEL_DENSITY * (stitch.y - self.miny)
+                    verts.append([wpos_x, wpos_y])
                     if stitch.jump:
                         jumps.append(stitch_index)
 
                     if stitch.trim or stitch.stop or stitch.color_change:
+                        if stitch.trim:
+                            self._trim_world_positions.append((wpos_x, wpos_y))
                         if verts:
                             blocks.append((np.array(verts, dtype=np.float32), jumps, color_rgba))
                         verts = []
