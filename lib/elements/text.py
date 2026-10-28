@@ -36,5 +36,6 @@ class TextObject(EmbroideryElement):
     def to_stitch_groups(self, last_stitch_group, next_element=None):
         return []
 
+    @property
     def first_stitch(self):
         return None
