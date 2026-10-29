@@ -59,6 +59,12 @@ def _quote_variant_string(value):
     return f"'{escaped}'"
 
 
+def _format_variant(value):
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return _quote_variant_string(value)
+
+
 def _activate_action(action_name, param=None):
     _require_tool('gdbus')
 
@@ -68,7 +74,7 @@ def _activate_action(action_name, param=None):
         '--object-path', INKSCAPE_APP_PATH,
         '--method', 'org.gtk.Actions.Activate',
         action_name,
-        f"[<{_quote_variant_string(param)}>]" if param is not None else '@av []',
+        f"[<{_format_variant(param)}>]" if param is not None else '@av []',
         '{}',
     ]
 
@@ -104,13 +110,22 @@ def focus_window(svg_path: str):
         )
 
 
-def select_element(element_id: str):
+def select_elements(element_ids):
     # select-by-id *adds* to the current selection rather than replacing it,
     # so without clearing first, object-set-attribute would also land on every
     # element selected earlier (by a previous call or by the user).
     _activate_action('select-clear')
     time.sleep(_ACTION_SETTLE_SECONDS)
-    _activate_action('select-by-id', element_id)
+    # select-by-id takes a comma-separated list; XML ids can't contain commas.
+    _activate_action('select-by-id', ','.join(element_ids))
+
+
+def select_element(element_id: str):
+    select_elements([element_id])
+
+
+def clear_selection():
+    _activate_action('select-clear')
 
 
 def set_attribute(name: str, value: str):
@@ -125,12 +140,28 @@ def set_attribute(name: str, value: str):
 _ACTION_SETTLE_SECONDS = 0.2
 
 
-def set_element_param(svg_path: str, element_id: str, param: str, value) -> None:
-    """Sets inkstitch:<param>="<value>" on element_id, live, in whichever
-    Inkscape window currently has svg_path open. Does not save to disk."""
+def settle():
+    time.sleep(_ACTION_SETTLE_SECONDS)
+
+
+_EXPORT_TIMEOUT_SECONDS = 10
+
+
+def export_live_svg(svg_path: str, out_path: str) -> None:
+    """Writes the live, in-memory state of the Inkscape window showing svg_path
+    (unsaved changes included) to out_path as an Inkscape SVG. svg_path itself
+    is never touched, so this is how live edits can be read back and verified
+    without asking the user to save."""
 
     focus_window(svg_path)
     time.sleep(_ACTION_SETTLE_SECONDS)
-    select_element(element_id)
-    time.sleep(_ACTION_SETTLE_SECONDS)
-    set_attribute(f"inkstitch:{param}", value)
+    _activate_action('export-type', 'svg')
+    _activate_action('export-plain-svg', False)
+    _activate_action('export-filename', out_path)
+    _activate_action('export-do')
+
+    deadline = time.time() + _EXPORT_TIMEOUT_SECONDS
+    while not os.path.isfile(out_path):
+        if time.time() > deadline:
+            raise DBusBridgeError(f"Inkscape did not export the live document to '{out_path}'.")
+        time.sleep(0.1)

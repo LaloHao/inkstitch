@@ -21,6 +21,7 @@ python -m mcp_server.cli list-elements path/to/design.svg
 python -m mcp_server.cli diagnose path/to/design.svg
 python -m mcp_server.cli stitch-plan-stats path/to/design.svg
 python -m mcp_server.cli open-designs
+python -m mcp_server.cli set-params path/to/open.svg '[{"ids": ["path1"], "params": {"zigzag_spacing_mm": "0.4"}}]'
 ```
 
 ## Register with Claude Code
@@ -42,12 +43,25 @@ claude mcp add inkstitch -- /path/to/venv/bin/python -m mcp_server.server
 - `diagnose_design(svg_path)` - same checks as Troubleshoot, as structured data.
 - `stitch_plan_stats(svg_path)` - runs the stitch engine: stitch count,
   colors, trims, stops, jumps, dimensions, estimated thread. Can be slow.
-- `set_element_param(svg_path, element_id, param, value)` - **Linux only**.
-  Sets an `inkstitch:*` attribute live on the document currently open in
-  Inkscape (visible on canvas immediately) via Inkscape's own D-Bus/GAction
-  interface (`select-by-id` + `object-set-attribute`) - no custom Inkscape
-  extension required. Does **not** save to disk; press Ctrl+S in Inkscape
-  to persist. Only works if `svg_path` is among `list_open_designs`.
+- `set_params(svg_path, changes)` - **Linux only**. Sets `inkstitch:*`
+  params on many elements at once, live on the document open in Inkscape
+  (visible on canvas immediately), via Inkscape's own D-Bus/GAction
+  interface - no custom Inkscape extension required. `changes` is a list of
+  `{"ids": [...], "params": {"name": "value"}}`; an empty value resets a
+  param to its default. Each call:
+  1. exports the live document to a temp file (unsaved edits included; the
+     user's file is never touched) and rejects the whole batch, writing
+     nothing, if an id doesn't exist or a param doesn't belong to that
+     element's type;
+  2. applies the batch (`select-clear` + `select-by-id` + `object-set-attribute`);
+  3. exports again and reports `verified`, any `mismatches` (value didn't
+     land) and `unexpected_changes` (an inkstitch attribute changed on
+     something that wasn't asked for), plus `previous_values` to undo.
+
+  Does **not** save to disk; press Ctrl+S in Inkscape to persist. Only works
+  if `svg_path` is among `list_open_designs`.
+- `set_element_param(svg_path, element_id, param, value)` - one-param
+  shortcut for `set_params`, same checks.
 
 ## How loading works
 
@@ -60,7 +74,7 @@ anything back to disk - see `lib/design_query.py`.
 - The "open designs" registry only updates when some Ink/Stitch extension
   runs against a file - not on every keystroke, and not for plain Inkscape
   use with no Ink/Stitch extension involved.
-- Live editing (`set_element_param`) needs `wmctrl` and `gdbus` on PATH and
+- Live editing (`set_params`) needs `wmctrl` and `gdbus` on PATH and
   a reachable X11/D-Bus session. Some MCP clients spawn this server with a
   stripped-down environment (no `DISPLAY`/`DBUS_SESSION_BUS_ADDRESS`);
   `lib/dbus_bridge.py` falls back to `DISPLAY=:0` and the standard

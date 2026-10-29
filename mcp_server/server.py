@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
-from lib import dbus_bridge, design_query, mcp_registry  # noqa: E402
+from lib import dbus_bridge, design_query, live_edit, mcp_registry  # noqa: E402
 
 mcp = FastMCP(
     name="inkstitch",
@@ -85,15 +85,7 @@ def stitch_plan_stats(svg_path: str) -> dict:
     return design_query.stitch_plan_stats(design)
 
 
-@mcp.tool()
-def set_element_param(svg_path: str, element_id: str, param: str, value: str) -> str:
-    """Set an Ink/Stitch parameter (e.g. row_spacing_mm, pull_compensation_mm)
-    on an element, applied live to the design currently open in Inkscape - the
-    change is visible on canvas immediately. Linux only, and svg_path must
-    already be open in Inkscape (check list_open_designs first). This does NOT
-    save the file - the user still needs to save from Inkscape (Ctrl+S) to
-    persist the change to disk."""
-
+def _require_open_design(svg_path):
     open_paths = {entry['path'] for entry in mcp_registry.list_registered_designs()}
     if os.path.abspath(svg_path) not in open_paths:
         raise dbus_bridge.DBusBridgeError(
@@ -101,11 +93,35 @@ def set_element_param(svg_path: str, element_id: str, param: str, value: str) ->
             "Open it in Inkscape first (or run any Ink/Stitch extension on it once), then retry."
         )
 
-    dbus_bridge.set_element_param(svg_path, element_id, param, value)
-    return (
-        f"Set inkstitch:{param}={value!r} on '{element_id}' in the live document. "
-        "Not saved yet - press Ctrl+S in Inkscape to persist it."
-    )
+
+@mcp.tool()
+def set_params(svg_path: str, changes: list[dict]) -> dict:
+    """Set Ink/Stitch parameters on many elements at once, live in the design
+    open in Inkscape, and verify the result. Linux only; svg_path must be in
+    list_open_designs. Does NOT save - the user presses Ctrl+S in Inkscape.
+
+    changes: [{"ids": ["path1", "path2"], "params": {"zigzag_spacing_mm": "0.42",
+    "pull_compensation_mm": "0.2"}}, ...]. Group elements that get the same
+    values into one change. An empty value resets a param to its default.
+
+    Every id and param name is checked against the open document before
+    anything is written; an invalid one fails the whole call with nothing
+    changed. Afterwards the live document is read back: "verified" is true
+    only if every value landed and no other inkstitch attribute changed.
+    "previous_values" lets you undo the batch with another set_params call."""
+
+    _require_open_design(svg_path)
+    return live_edit.apply_param_changes(svg_path, changes)
+
+
+@mcp.tool()
+def set_element_param(svg_path: str, element_id: str, param: str, value: str) -> dict:
+    """Set one Ink/Stitch parameter (e.g. row_spacing_mm) on one element, live
+    in the design open in Inkscape, and verify it. Same rules as set_params,
+    which is preferred for more than one change."""
+
+    _require_open_design(svg_path)
+    return live_edit.apply_param_changes(svg_path, [dict(ids=[element_id], params={param: value})])
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import click  # noqa: E402
 
-from lib import design_query, mcp_registry  # noqa: E402
+from lib import design_query, live_edit, mcp_registry  # noqa: E402
 
 
 def _print(data):
@@ -66,6 +66,15 @@ def diagnose(svg_path, no_warnings):
 def stitch_plan_stats(svg_path):
     design = design_query.load_design(svg_path)
     _print(design_query.stitch_plan_stats(design))
+
+
+@cli.command(name='set-params')
+@click.argument('svg_path')
+@click.argument('changes_json')
+def set_params(svg_path, changes_json):
+    """Live-edit params in Inkscape and verify. CHANGES_JSON is e.g.
+    '[{"ids": ["path1"], "params": {"zigzag_spacing_mm": "0.4"}}]'."""
+    _print(live_edit.apply_param_changes(svg_path, json.loads(changes_json)))
 
 
 if __name__ == '__main__':
