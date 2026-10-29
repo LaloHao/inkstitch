@@ -22,6 +22,7 @@ from .elements.validation import ObjectTypeWarning, ValidationWarning
 from .extensions.base import InkstitchExtension
 from .stitch_plan import stitch_groups_to_stitch_plan
 from .svg import PIXELS_PER_MM
+from .svg.tags import INKSTITCH_ATTRIBS
 from .update import update_inkstitch_document
 
 
@@ -111,7 +112,7 @@ def _find_element(design: LoadedDesign, element_id: str):
 
 def summarize_design(design: LoadedDesign) -> dict:
     """Cheap overview of a design: does not run embroider(), so dimensions
-    come from the SVG viewbox and colors from element styling rather than
+    come from the page size and colors from element styling rather than
     the actual stitch plan (see stitch_plan_stats for the stitched numbers,
     which can differ slightly due to pull/push compensation)."""
 
@@ -125,9 +126,11 @@ def summarize_design(design: LoadedDesign) -> dict:
         if color is not None:
             colors.add(str(color))
 
+    # viewport_* is the page size in px; viewbox_* is in user units, which
+    # are only px when the document's scale is 1 (often mm instead).
     svg = design.svg
-    width_mm = svg.viewbox_width / PIXELS_PER_MM
-    height_mm = svg.viewbox_height / PIXELS_PER_MM
+    width_mm = svg.viewport_width / PIXELS_PER_MM
+    height_mm = svg.viewport_height / PIXELS_PER_MM
 
     return dict(
         path=design.path,
@@ -139,7 +142,12 @@ def summarize_design(design: LoadedDesign) -> dict:
     )
 
 
-def list_element_params(design: LoadedDesign, element_id: Optional[str] = None) -> list[dict]:
+def list_element_params(design: LoadedDesign, element_id: Optional[str] = None,
+                        only_set: bool = True, param_names: Optional[list[str]] = None) -> list[dict]:
+    """only_set: skip params left at their default (not written on the node),
+    which is most of them - a full listing can run to hundreds of KB.
+    param_names: only report these params (set or not)."""
+
     if element_id is not None:
         elements = [_find_element(design, element_id)]
     else:
@@ -152,6 +160,12 @@ def list_element_params(design: LoadedDesign, element_id: Optional[str] = None) 
 
         params = {}
         for name, value in values.items():
+            if param_names is not None:
+                if name not in param_names:
+                    continue
+            elif only_set and not element.node.get(INKSTITCH_ATTRIBS.get(name, ''), '').strip():
+                continue
+
             param = param_by_name.get(name)
             params[name] = dict(
                 value=value,
@@ -176,7 +190,11 @@ def _serialize_problem(problem, severity: str) -> dict:
         name=problem.name,
         description=problem.description,
         steps_to_solve=list(problem.steps_to_solve),
-        position=dict(x=problem.position.x, y=problem.position.y),
+        # element geometry is in px; report mm like every other tool
+        position_mm=dict(
+            x=round(problem.position.x / PIXELS_PER_MM, 2),
+            y=round(problem.position.y / PIXELS_PER_MM, 2),
+        ),
     )
 
 

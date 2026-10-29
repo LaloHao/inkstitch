@@ -46,9 +46,11 @@ def summarize(svg_path):
 @cli.command(name='list-elements')
 @click.argument('svg_path')
 @click.option('--element-id', default=None)
-def list_elements(svg_path, element_id):
+@click.option('--all-params', is_flag=True, help="Include params left at their default.")
+@click.option('--param', 'param_names', multiple=True, help="Only list this param (repeatable).")
+def list_elements(svg_path, element_id, all_params, param_names):
     design = design_query.load_design(svg_path)
-    _print(design_query.list_element_params(design, element_id))
+    _print(design_query.list_element_params(design, element_id, not all_params, list(param_names) or None))
 
 
 @cli.command()

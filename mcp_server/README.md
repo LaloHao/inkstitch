@@ -37,7 +37,8 @@ claude mcp add inkstitch -- /path/to/venv/bin/python -m mcp_server.server
   Inkscape (populated automatically whenever you run any Ink/Stitch
   extension - Params, Troubleshoot, Simulator, etc. - against a file).
 - `summarize_design(svg_path)` - element counts, colors, dimensions.
-- `list_elements(svg_path, element_id=None)` - stitch parameters per element.
+- `list_elements(svg_path, element_id=None, only_set=True, param_names=None)` -
+  stitch parameters per element; by default only the ones explicitly set.
 - `diagnose_design(svg_path)` - same checks as Troubleshoot, as structured data.
 - `stitch_plan_stats(svg_path)` - runs the stitch engine: stitch count,
   colors, trims, stops, jumps, dimensions, estimated thread. Can be slow.

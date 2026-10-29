@@ -44,7 +44,7 @@ def list_open_designs() -> list[dict]:
 @mcp.tool()
 def summarize_design(svg_path: str) -> dict:
     """Cheap overview of a design: element counts by type, color count, and
-    dimensions from the SVG viewbox. Does not run the stitch engine - for
+    page dimensions in mm. Does not run the stitch engine - for
     the actual stitched dimensions and stitch count, use stitch_plan_stats."""
 
     design = design_query.load_design(svg_path)
@@ -52,14 +52,17 @@ def summarize_design(svg_path: str) -> dict:
 
 
 @mcp.tool()
-def list_elements(svg_path: str, element_id: Optional[str] = None) -> list[dict]:
+def list_elements(svg_path: str, element_id: Optional[str] = None, only_set: bool = True,
+                  param_names: Optional[list[str]] = None) -> list[dict]:
     """List embroidery elements in a design and their Ink/Stitch parameters
     (density, underlay, pull compensation, stitch length, etc.), with each
     parameter's current value, unit, and description. Pass element_id to
-    limit to a single element."""
+    limit to a single element. By default only params explicitly set on an
+    element are listed (only_set=False lists defaults too, which is large);
+    param_names limits the output to those params, set or not."""
 
     design = design_query.load_design(svg_path)
-    return design_query.list_element_params(design, element_id)
+    return design_query.list_element_params(design, element_id, only_set, param_names)
 
 
 @mcp.tool()
