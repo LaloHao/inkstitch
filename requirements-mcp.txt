@@ -1,0 +1,6 @@
+# Extra dependency for the MCP connector (mcp_server/), installed separately
+# from requirements.txt so it never ends up in the PyInstaller-bundled build.
+#
+#   pip install -r requirements.txt -r requirements-mcp.txt
+#
+mcp>=1.2.0

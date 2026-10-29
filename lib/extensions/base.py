@@ -9,6 +9,7 @@ import inkex
 
 from ..elements import iterate_nodes, nodes_to_elements
 from ..i18n import _
+from ..mcp_registry import register_open_design
 from ..metadata import InkStitchMetadata
 from ..svg import generate_unique_id
 from ..svg.tags import INKSCAPE_GROUPMODE, SVG_GROUP_TAG
@@ -25,6 +26,21 @@ class InkstitchExtension(inkex.EffectExtension):
     def load(self, *args, **kwargs):
         document = super().load(*args, **kwargs)
         update_inkstitch_document(document)
+
+        # self.options.input_file is *not* the document's real location when
+        # Inkscape invokes an extension from its GUI: Inkscape exports the
+        # live document to a throwaway temp file and passes that instead.
+        # The real saved path (if any) is only available via DOCUMENT_PATH,
+        # which Inkscape sets in the environment for exactly this reason.
+        document_path = self.document_path()
+        if not document_path and isinstance(self.options.input_file, str):
+            # Running outside Inkscape's GUI (e.g. bin/inkstitch directly),
+            # where input_file already is the real path and DOCUMENT_PATH
+            # is never set.
+            document_path = self.options.input_file
+        if document_path:
+            register_open_design(document_path)
+
         return document
 
     @classmethod
