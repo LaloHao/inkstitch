@@ -278,8 +278,13 @@ def _satin_measurements(element, samples=20):
         for i in range(samples + 1)
     )
 
+    skew = element.stitch_skew()
+
     return dict(
         width_mm=dict(min=_mm(widths[0]), median=_mm(widths[len(widths) // 2]), max=_mm(widths[-1])),
+        # degrees the stitches lean from crossing the column straight;
+        # Troubleshoot warns from a mean of SatinColumn.MAX_MEAN_STITCH_SKEW
+        stitch_skew_deg=dict(mean=round(skew[0], 1), max=round(skew[1], 1)) if skew else None,
         length_mm=_mm((rail_a.length + rail_b.length) / 2),
         # rungs drawn by the user; with none, Ink/Stitch pairs up the rail
         # nodes itself (implicit_rungs), which only works when both rails

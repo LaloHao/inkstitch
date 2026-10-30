@@ -46,8 +46,9 @@ claude mcp add inkstitch -- /path/to/venv/bin/python -m mcp_server.server
 - `stitch_plan_stats(svg_path)` - runs the stitch engine: stitch count,
   colors, trims, stops, jumps, dimensions, estimated thread. Can be slow.
 - `measure_elements(svg_path, element_ids=None, live=False)` - geometry in
-  mm, in embroidery order: satin width (min/median/max), length and rungs
-  (drawn vs. implicit), fill area, running stitch length, bounding boxes.
+  mm, in embroidery order: satin width (min/median/max), length, rungs
+  (drawn vs. implicit), stitch skew (how far stitches lean from straight
+  across), fill area, running stitch length, bounding boxes.
   From the SVG, so pull compensation isn't included.
 - `suggest_trims(svg_path, min_gap_mm=1.0, live=False)` - runs the stitch
   engine and lists same-color neighbours with no trim between them: gaps

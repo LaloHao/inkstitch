@@ -88,7 +88,8 @@ def stitch_plan_stats(svg_path: str) -> dict:
 @mcp.tool()
 def measure_elements(svg_path: str, element_ids: Optional[list[str]] = None, live: bool = False) -> list[dict]:
     """Geometry of each element in mm, in embroidery order: satin column width
-    (min/median/max), length and rungs; fill area; running
+    (min/median/max), length, rungs and how much the stitches lean
+    (stitch_skew_deg; 0 = straight across); fill area; running
     stitch length; bounding boxes. Useful to spot satins too narrow for the
     fabric or fills that are larger than they look. Measured from the SVG, so
     pull compensation isn't included. live=True reads the document open in

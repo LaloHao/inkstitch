@@ -4,6 +4,7 @@
 # Licensed under the GNU GPL version 3.0 or later.  See the file LICENSE for details.
 
 import itertools
+import math
 from copy import deepcopy
 from itertools import chain
 from typing import List, Tuple
@@ -95,6 +96,18 @@ class TwoRungsWarning(ValidationWarning):
     steps_to_solve = [
         _('* With the selected object press "P" to activate the pencil tool.'),
         _('* Hold "Shift" while drawing a rung.')
+    ]
+
+
+class SkewedStitchesWarning(ValidationWarning):
+    name = _("Slanted satin stitches")
+    description = _("On average, the stitches of this satin column cross it at a steep angle instead of straight across. "
+                    "This usually happens when the two rails start or end at different points along the column, "
+                    "and makes the column look jagged and thin.")
+    steps_to_solve = [
+        _('* Make both rails start and end at about the same place along the column, e.g. let the column overlap '
+          'the shape it joins instead of cutting its ends at an angle.'),
+        _('* Or add rungs straight across the column to set the stitch direction.')
     ]
 
 
@@ -895,6 +908,73 @@ class SatinColumn(EmbroideryElement):
 
         return sections
 
+    # how far, in degrees, a stitch may lean on average from crossing the
+    # column straight before SkewedStitchesWarning is raised
+    MAX_MEAN_STITCH_SKEW = 45
+
+    @cache
+    def stitch_skew(self, samples_per_section=10):
+        """How much the satin stitches lean away from crossing the column at
+        a right angle, from 0 (straight across) to 90 (along the column).
+
+        Satin stitches join the points at the same relative position along
+        each rail within a section (between rungs), so this samples those
+        pairs and compares each one with the local direction of the column.
+        Returns (length-weighted mean, max, point of max) in degrees and
+        document coordinates, or None if there is nothing to measure."""
+
+        total_length = 0
+        weighted_skew = 0
+        max_skew = 0
+        max_point = None
+
+        for section0, section1 in self.flattened_sections:
+            rail0 = shgeo.LineString(section0)
+            rail1 = shgeo.LineString(section1)
+            if rail0.length == 0 or rail1.length == 0:
+                continue
+
+            previous = None
+            for i in range(samples_per_section + 1):
+                t = i / samples_per_section
+                point0 = rail0.interpolate(t, normalized=True)
+                point1 = rail1.interpolate(t, normalized=True)
+                stitch = (point1.x - point0.x, point1.y - point0.y)
+
+                # local column direction: both rails' directions at t, each normalized
+                direction = [0.0, 0.0]
+                for rail in (rail0, rail1):
+                    ahead = rail.interpolate(min(t + 0.02, 1), normalized=True)
+                    behind = rail.interpolate(max(t - 0.02, 0), normalized=True)
+                    step = math.hypot(ahead.x - behind.x, ahead.y - behind.y)
+                    if step:
+                        direction[0] += (ahead.x - behind.x) / step
+                        direction[1] += (ahead.y - behind.y) / step
+
+                stitch_length = math.hypot(*stitch)
+                direction_length = math.hypot(*direction)
+                if not stitch_length or not direction_length:
+                    continue
+
+                cosine = abs(stitch[0] * direction[0] + stitch[1] * direction[1]) / (stitch_length * direction_length)
+                skew = math.degrees(math.asin(min(cosine, 1.0)))
+                middle = shgeo.Point((point0.x + point1.x) / 2, (point0.y + point1.y) / 2)
+
+                if previous is not None:
+                    previous_skew, previous_middle = previous
+                    step_length = middle.distance(previous_middle)
+                    total_length += step_length
+                    weighted_skew += step_length * (skew + previous_skew) / 2
+
+                if skew > max_skew:
+                    max_skew = skew
+                    max_point = middle
+                previous = (skew, middle)
+
+        if not total_length:
+            return None
+        return weighted_skew / total_length, max_skew, max_point
+
     def validation_warnings(self):  # noqa: C901
         paths = self.node.get_path()
         if any([path.letter == 'Z' for path in paths]):
@@ -918,6 +998,11 @@ class SatinColumn(EmbroideryElement):
                         yield DanglingRungWarning(rung.interpolate(0.5, normalized=True))
                     elif not isinstance(intersection, shgeo.Point):
                         yield TooManyIntersectionsWarning(rung.interpolate(0.5, normalized=True))
+
+        if len(self.paths) > 1 and len(self.line_string_rails) == 2:
+            skew = self.stitch_skew()
+            if skew is not None and skew[0] >= self.MAX_MEAN_STITCH_SKEW:
+                yield SkewedStitchesWarning(skew[2])
 
     def validation_errors(self):
         if len(self.line_string_rails) == 0:
