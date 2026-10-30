@@ -3,7 +3,7 @@
 # Copyright (c) 2010 Authors
 # Licensed under the GNU GPL version 3.0 or later.  See the file LICENSE for details.
 
-"""Headless (no wx GUI, no writing to disk) inspection of Ink/Stitch designs.
+"""Headless (no wx GUI, never writes the SVG back) inspection of Ink/Stitch designs.
 
 This is the core used by the MCP connector (see mcp_server/) to read stitch
 parameters and run diagnostics against a saved .svg file, without going
@@ -20,6 +20,7 @@ from inkex.base import SvgInputMixin
 
 from .elements.validation import ObjectTypeWarning, ValidationWarning
 from .extensions.base import InkstitchExtension
+from .output import write_embroidery_file
 from .stitch_plan import stitch_groups_to_stitch_plan
 from .svg import PIXELS_PER_MM
 from .svg.tags import INKSTITCH_ATTRIBS
@@ -224,18 +225,39 @@ def diagnose_design(design: LoadedDesign, include_warnings: bool = True) -> dict
     )
 
 
-def stitch_plan_stats(design: LoadedDesign) -> dict:
-    """Runs the same embroider() + stitch_groups_to_stitch_plan() pipeline as
-    Extensions > Ink/Stitch > Element Info. Can be slow on large designs."""
-
+def _stitch_plan(design: LoadedDesign):
     metadata = design.metadata
     stitch_groups = design.extension.elements_to_stitch_groups(design.elements)
-    stitch_plan = stitch_groups_to_stitch_plan(
+    return stitch_groups_to_stitch_plan(
         stitch_groups,
         collapse_len=metadata['collapse_len_mm'],
         min_stitch_len=metadata['min_stitch_len_mm'],
     )
 
+
+def stitch_plan_stats(design: LoadedDesign) -> dict:
+    """Runs the same embroider() + stitch_groups_to_stitch_plan() pipeline as
+    Extensions > Ink/Stitch > Element Info. Can be slow on large designs."""
+    return _summarize_stitch_plan(_stitch_plan(design))
+
+
+def export_files(design: LoadedDesign, out_paths: list[str]) -> dict:
+    """Write the design as embroidery files (format from each extension),
+    like File > Save As with Ink/Stitch's output extension, computing the
+    stitch plan once for all of them. Returns stitch_plan_stats()."""
+    from .threads import ThreadCatalog
+
+    metadata = design.metadata
+    stitch_plan = _stitch_plan(design)
+    ThreadCatalog().match_and_apply_palette(stitch_plan, metadata['thread-palette'])
+    root = design.extension.document.getroot()
+    for path in out_paths:
+        settings = {'rotate': metadata.get('rotate_on_export', 0)}
+        write_embroidery_file(path, stitch_plan, root, settings)
+    return _summarize_stitch_plan(stitch_plan)
+
+
+def _summarize_stitch_plan(stitch_plan) -> dict:
     width_mm, height_mm = stitch_plan.dimensions_mm
 
     return dict(

@@ -68,6 +68,16 @@ def stitch_plan_stats(svg_path):
     _print(design_query.stitch_plan_stats(design))
 
 
+@cli.command(name='export')
+@click.argument('svg_path')
+@click.argument('out_paths', nargs=-1, required=True)
+def export(svg_path, out_paths):
+    """Write embroidery files (format from each OUT_PATH's extension, e.g.
+    design.dst design.pes) from one stitch plan; prints its stats."""
+    design = design_query.load_design(svg_path)
+    _print(design_query.export_files(design, list(out_paths)))
+
+
 @cli.command(name='measure-elements')
 @click.argument('svg_path')
 @click.option('--element-id', 'element_ids', multiple=True, help="Only measure this element (repeatable).")
