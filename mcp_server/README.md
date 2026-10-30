@@ -21,6 +21,8 @@ python -m mcp_server.cli list-elements path/to/design.svg
 python -m mcp_server.cli diagnose path/to/design.svg
 python -m mcp_server.cli stitch-plan-stats path/to/design.svg
 python -m mcp_server.cli open-designs
+python -m mcp_server.cli measure-elements path/to/design.svg
+python -m mcp_server.cli suggest-trims path/to/design.svg
 python -m mcp_server.cli set-params path/to/open.svg '[{"ids": ["path1"], "params": {"zigzag_spacing_mm": "0.4"}}]'
 ```
 
@@ -43,6 +45,19 @@ claude mcp add inkstitch -- /path/to/venv/bin/python -m mcp_server.server
 - `diagnose_design(svg_path)` - same checks as Troubleshoot, as structured data.
 - `stitch_plan_stats(svg_path)` - runs the stitch engine: stitch count,
   colors, trims, stops, jumps, dimensions, estimated thread. Can be slow.
+- `measure_elements(svg_path, element_ids=None, live=False)` - geometry in
+  mm, in embroidery order: satin width (min/median/max), length and rungs
+  (drawn vs. implicit), fill area, running stitch length, bounding boxes.
+  From the SVG, so pull compensation isn't included.
+- `suggest_trims(svg_path, min_gap_mm=1.0, live=False)` - runs the stitch
+  engine and lists same-color neighbours with no trim between them: gaps
+  short enough to be sewn as one visible "connector" stitch, and jumps that
+  aren't trimmed. Returns `set_params_changes` to add the trims with
+  `set_params`.
+
+  With `live=True` both read the document open in Inkscape (unsaved edits
+  included) instead of the saved file - e.g. to re-check right after
+  `set_params`. **Linux only**, same requirements as `set_params`.
 - `set_params(svg_path, changes)` - **Linux only**. Sets `inkstitch:*`
   params on many elements at once, live on the document open in Inkscape
   (visible on canvas immediately), via Inkscape's own D-Bus/GAction

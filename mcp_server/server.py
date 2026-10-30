@@ -85,6 +85,40 @@ def stitch_plan_stats(svg_path: str) -> dict:
     return design_query.stitch_plan_stats(design)
 
 
+@mcp.tool()
+def measure_elements(svg_path: str, element_ids: Optional[list[str]] = None, live: bool = False) -> list[dict]:
+    """Geometry of each element in mm, in embroidery order: satin column width
+    (min/median/max), length and rungs; fill area; running
+    stitch length; bounding boxes. Useful to spot satins too narrow for the
+    fabric or fills that are larger than they look. Measured from the SVG, so
+    pull compensation isn't included. live=True reads the document open in
+    Inkscape (unsaved edits included) instead of the saved file."""
+
+    return _with_design(svg_path, live, lambda design: design_query.measure_elements(design, element_ids))
+
+
+@mcp.tool()
+def suggest_trims(svg_path: str, min_gap_mm: float = 1.0, live: bool = False) -> dict:
+    """Find places where the machine would leave thread on top between two
+    same-color elements because there's no trim: short gaps sewn as one
+    straight "connector" stitch (e.g. between letters), and jumps with no
+    trim. Gaps under min_gap_mm (touching pieces of one shape) are ignored.
+    Returns "set_params_changes", ready to pass to set_params to add
+    trim_after where suggested. live=True reads the document open in
+    Inkscape instead of the saved file. Runs the stitch engine; can be slow."""
+
+    return _with_design(svg_path, live, lambda design: design_query.suggest_trims(design, min_gap_mm))
+
+
+def _with_design(svg_path, live, query):
+    if not live:
+        return query(design_query.load_design(svg_path))
+
+    _require_open_design(svg_path)
+    with live_edit.live_snapshot(svg_path) as snapshot_path:
+        return query(design_query.load_design(snapshot_path))
+
+
 def _require_open_design(svg_path):
     open_paths = {entry['path'] for entry in mcp_registry.list_registered_designs()}
     if os.path.abspath(svg_path) not in open_paths:

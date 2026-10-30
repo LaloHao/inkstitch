@@ -252,3 +252,148 @@ def stitch_plan_stats(design: LoadedDesign) -> dict:
             for block in stitch_plan
         ],
     )
+
+
+def _mm(value_px):
+    return round(value_px / PIXELS_PER_MM, 2)
+
+
+def _bbox_mm(geometry):
+    if geometry is None or geometry.is_empty:
+        return None
+    min_x, min_y, max_x, max_y = geometry.bounds
+    return dict(x=_mm(min_x), y=_mm(min_y), width=_mm(max_x - min_x), height=_mm(max_y - min_y))
+
+
+def _satin_measurements(element, samples=20):
+    rails = element.line_string_rails
+    if len(rails) != 2:
+        return dict(error="satin column needs exactly two rails")
+    rail_a, rail_b = rails
+
+    # distance from evenly spaced points on one rail to the other rail -
+    # the column's width as stitched, before pull compensation
+    widths = sorted(
+        rail_a.interpolate(i / samples, normalized=True).distance(rail_b)
+        for i in range(samples + 1)
+    )
+
+    return dict(
+        width_mm=dict(min=_mm(widths[0]), median=_mm(widths[len(widths) // 2]), max=_mm(widths[-1])),
+        length_mm=_mm((rail_a.length + rail_b.length) / 2),
+        # rungs drawn by the user; with none, Ink/Stitch pairs up the rail
+        # nodes itself (implicit_rungs), which only works when both rails
+        # have the same number of points
+        rungs=max(len(element.filtered_subpaths) - 2, 0),
+        implicit_rungs=len(element.rungs) if len(element.filtered_subpaths) == 2 else 0,
+        bbox_mm=_bbox_mm(rail_a.union(rail_b)),
+    )
+
+
+def measure_elements(design: LoadedDesign, element_ids: Optional[list[str]] = None) -> list[dict]:
+    """Real-world geometry per element, in embroidery order: satin width
+    (min/median/max) and length, fill area, running stitch length, bounding
+    boxes - all in mm. Measured from the SVG, not the stitch plan, so
+    compensation (pull/push, expand) isn't included."""
+
+    if element_ids is not None:
+        elements = [_find_element(design, element_id) for element_id in element_ids]
+    else:
+        elements = design.elements
+
+    result = []
+    for element in elements:
+        type_name = type(element).__name__
+        entry = dict(
+            id=element.id,
+            label=element.node.label,
+            type=type_name,
+            color=str(element.color) if getattr(element, 'color', None) is not None else None,
+            order=design.elements.index(element),
+        )
+
+        try:
+            if type_name == 'SatinColumn':
+                entry.update(_satin_measurements(element))
+            elif type_name == 'FillStitch':
+                shape = element.shape
+                entry.update(area_mm2=round(shape.area / PIXELS_PER_MM ** 2, 2), bbox_mm=_bbox_mm(shape))
+            elif type_name == 'Stroke':
+                lines = element.as_multi_line_string()
+                entry.update(length_mm=_mm(lines.length), bbox_mm=_bbox_mm(lines))
+        except Exception as exc:  # broken geometry shouldn't hide the rest of the design
+            entry['error'] = f"{type(exc).__name__}: {exc}"
+
+        result.append(entry)
+
+    return result
+
+
+def suggest_trims(design: LoadedDesign, min_gap_mm: float = 1.0) -> dict:
+    """Walks the elements in embroidery order, stitching each one the way the
+    stitch plan does, and finds same-color neighbours with no trim between
+    them. Two cases are reported, both of which leave thread on top of the
+    fabric:
+
+    - "connector": the gap is shorter than the jump threshold (collapse_len,
+      or the element's own min_jump_stitch_length_mm), so the machine sews a
+      single straight stitch across it - visible between letters, say.
+      Gaps under min_gap_mm are left alone: those are pieces of one shape
+      that touch or overlap.
+    - "jump": a jump stitch with no trim, which stays as a loose thread
+      unless the machine auto-trims jumps or it is cut by hand.
+
+    Color changes are not reported (machines trim there anyway).
+    """
+
+    metadata = design.metadata
+    collapse_len = float(metadata['collapse_len_mm']) * PIXELS_PER_MM
+    min_gap = min_gap_mm * PIXELS_PER_MM
+
+    elements = design.elements
+    previous = None  # (element, its last stitch group)
+    last_stitch_group = None
+    suggestions = []
+    already_trimmed = 0
+
+    for index, element in enumerate(elements):
+        next_element = elements[index + 1] if index + 1 < len(elements) else None
+        # same previous-group/next-element chaining as elements_to_stitch_groups()
+        all_groups = element.embroider(last_stitch_group, next_element)
+        if all_groups:
+            last_stitch_group = all_groups[-1]
+        stitch_groups = [group for group in all_groups if group.stitches]
+        if not stitch_groups:
+            continue
+
+        if previous is not None:
+            previous_element, previous_group = previous
+            first_group = stitch_groups[0]
+            if previous_group.color == first_group.color:
+                if previous_group.trim_after or previous_group.stop_after:
+                    already_trimmed += 1
+                else:
+                    gap = (first_group.stitches[0] - previous_group.stitches[-1]).length()
+                    jump_threshold = previous_group.min_jump_stitch_length or collapse_len
+                    kind = 'jump' if gap > jump_threshold else 'connector'
+                    if kind == 'jump' or gap >= min_gap:
+                        suggestions.append(dict(
+                            after_id=previous_element.id,
+                            after_label=previous_element.node.label,
+                            next_id=element.id,
+                            next_label=element.node.label,
+                            gap_mm=_mm(gap),
+                            kind=kind,
+                        ))
+
+        previous = (element, stitch_groups[-1])
+
+    return dict(
+        collapse_len_mm=float(metadata['collapse_len_mm']),
+        min_gap_mm=min_gap_mm,
+        already_trimmed=already_trimmed,
+        suggestions=suggestions,
+        # ready to pass to the set_params tool
+        set_params_changes=[dict(ids=[s['after_id'] for s in suggestions], params=dict(trim_after='True'))]
+        if suggestions else [],
+    )

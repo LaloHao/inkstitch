@@ -68,6 +68,22 @@ def stitch_plan_stats(svg_path):
     _print(design_query.stitch_plan_stats(design))
 
 
+@cli.command(name='measure-elements')
+@click.argument('svg_path')
+@click.option('--element-id', 'element_ids', multiple=True, help="Only measure this element (repeatable).")
+def measure_elements(svg_path, element_ids):
+    design = design_query.load_design(svg_path)
+    _print(design_query.measure_elements(design, list(element_ids) or None))
+
+
+@cli.command(name='suggest-trims')
+@click.argument('svg_path')
+@click.option('--min-gap-mm', default=1.0, show_default=True)
+def suggest_trims(svg_path, min_gap_mm):
+    design = design_query.load_design(svg_path)
+    _print(design_query.suggest_trims(design, min_gap_mm))
+
+
 @cli.command(name='set-params')
 @click.argument('svg_path')
 @click.argument('changes_json')

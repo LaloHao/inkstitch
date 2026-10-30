@@ -15,6 +15,7 @@ value landed and that no other inkstitch attribute changed anywhere.
 
 import os
 import tempfile
+from contextlib import contextmanager
 
 import inkex
 from lxml import etree
@@ -26,6 +27,17 @@ INKSTITCH_NS = inkex.NSS['inkstitch']
 
 class ParamChangeError(Exception):
     """The requested changes are invalid; nothing was written."""
+
+
+@contextmanager
+def live_snapshot(svg_path: str):
+    """Yields the path of a temp copy of the live document open in Inkscape
+    (unsaved edits included), deleted afterwards."""
+
+    with tempfile.TemporaryDirectory(prefix='inkstitch-live-') as tmp:
+        snapshot_path = os.path.join(tmp, os.path.basename(svg_path))
+        dbus_bridge.export_live_svg(svg_path, snapshot_path)
+        yield snapshot_path
 
 
 def _normalize_changes(changes):
